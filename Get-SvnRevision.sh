@@ -65,6 +65,7 @@
 #		Add config file feature.
 #		Minor visual changes.
 # 1.56	Add new read parameters function.
+#		Add coloured output.
 
 #--------------------------------------------------------------------------------------
 # VARIABLES
@@ -128,6 +129,22 @@ checkError()
 	fi
 }
 
+print_id(){
+	case $1 in
+		"M")
+			echo -ne "    [\e[36m$1\e[0m]"
+			;;
+		"A")
+			echo -ne "    [\e[32m$1\e[0m]"
+			;;
+		"D")
+			echo -ne "    [\e[33m$1\e[0m]"
+			;;
+		*)
+	esac
+	echo " $2"
+}
+
 # getFull()
 # Retrieve a copy of subversion repository up to revision number
 getFull()
@@ -150,7 +167,8 @@ getIndividual()
 		l=$(basename $svn_repo)
 		p=${p#/$l/}
 		pescape=$(echo ${p} | sed 's/\(.*@.*\)/\1@/')
-		echo "    [$o] $p"
+		print_id "$o" "$p"
+		#echo "    [$o] $p"
 		if [ "$o" != "D" ]; then
 			mkdir -p $svn_output/$(dirname $p) > /dev/null 2>&1
 			svn export --non-interactive --trust-server-cert --username=$svn_user --password=$svn_pass --force -r $svn_rev $svn_repo/$pescape $svn_output/$p > /dev/null 2>&1
@@ -176,7 +194,8 @@ getChanges()
 		o=${i:0:1}
 		p=${i:$svn_repo_l}
 		pescape=$(echo ${p} | sed 's/\(.*@.*\)/\1@/')
-		echo "    [$o] $p"
+		print_id "$o" "$p"
+		#echo "    [$o] $p"
 		if [ "$o" != "D" ]; then
 			if [ "$p" != "" ]; then
 				#<r1.51>
