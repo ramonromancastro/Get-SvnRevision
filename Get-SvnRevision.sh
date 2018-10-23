@@ -63,21 +63,28 @@
 #		Change script name. 
 #		Change default httpd's user and group.
 #		Add config file feature.
+#		Minor visual changes.
+# 1.56	Add new read parameters function.
 
 #--------------------------------------------------------------------------------------
 # VARIABLES
 #--------------------------------------------------------------------------------------
 
 script_name=Get-SvnRevision
-script_version=1.55
+script_version=1.56
 svn_error=0
 svn_binpath=$(which svn 2>/dev/null)
 svn_scriptname=$(basename $(readlink --canonicalize --no-newline $0))
 svn_scriptname=${svn_scriptname%.*}
 export_types=(full changes individual)
 check_parameters=0
-line_separator="--------------------------------------------------------------------"
-block_separator="===================================================================="
+
+svn_repo=
+svn_rev=
+svn_type="full"
+svn_user=
+svn_pass=
+deploy_path=
 
 httpd_root=$(httpd -V | grep "HTTPD_ROOT="".*""" | awk -F "=" '{ print $2 }' | tr -d '"')
 httpd_config=$(httpd -V | grep "SERVER_CONFIG_FILE="".*""" | awk -F "=" '{ print $2 }' | tr -d '"')
@@ -110,7 +117,6 @@ svn_outputtargz=$svn_scriptname.export.tar.gz
 exitScript()
 {
 	rm $svn_output -Rf > /dev/null 2>&1
-	echo
 	exit $1
 }
 
@@ -120,11 +126,6 @@ checkError()
 		echo -e "[\033[0;31m ERROR \033[0m]"
 		exitScript 1
 	fi
-}
-
-checkSucess()
-{
-	echo -e "[\033[0;32m OK \033[0m]"
 }
 
 # getFull()
@@ -149,7 +150,7 @@ getIndividual()
 		l=$(basename $svn_repo)
 		p=${p#/$l/}
 		pescape=$(echo ${p} | sed 's/\(.*@.*\)/\1@/')
-		echo [$o] - $p
+		echo "    [$o] $p"
 		if [ "$o" != "D" ]; then
 			mkdir -p $svn_output/$(dirname $p) > /dev/null 2>&1
 			svn export --non-interactive --trust-server-cert --username=$svn_user --password=$svn_pass --force -r $svn_rev $svn_repo/$pescape $svn_output/$p > /dev/null 2>&1
@@ -175,7 +176,7 @@ getChanges()
 		o=${i:0:1}
 		p=${i:$svn_repo_l}
 		pescape=$(echo ${p} | sed 's/\(.*@.*\)/\1@/')
-		echo [$o] - $p
+		echo "    [$o] $p"
 		if [ "$o" != "D" ]; then
 			if [ "$p" != "" ]; then
 				#<r1.51>
@@ -197,11 +198,6 @@ getChanges()
 summary()
 {
 cat << EOF
-
-$line_separator
-Script : `basename $0`
-Version: $script_version
-$line_separator
 Repository URL  : $svn_repo
 Export type     : $svn_type
 Revision number : $svn_rev
@@ -214,24 +210,23 @@ EOF
 usage()
 {
 cat << EOF
-
-Script : ${script_name}.sh
-Version: $script_version
-
-usage: $0 options
+usage: ${script_name}.sh options
 
 OPTIONS:
-   -h      Repository URL
-   -t      Export type, can be 'full', 'individual' or 'changes' (Default: full)
-   -r      Revision number, can be N or N:M
-   -u      Username
-   -d      Absolute deploy path
+    -U|--url          Repository URL
+    -t|--type         Export type, can be 'full', 'individual' or 'changes' (Default: full)
+    -r|--revision     Revision number, can be N or N:M
+    -u|--username     Repository username
+    -p|--password     Repository password [optional]
+    -d|--deploy-path  Absolute deploy path [optional]
    
 NOTES:
-   - All directories (${exclude_folders[@]}) are removed on destination directory by this script
-   - All files (${exclude_files[@]}) are removed on destination directory by this script
-   - Export type 'individual' only works from repository base or first level directory.
+    - All directories (${exclude_folders[@]}) are removed on destination directory by this script
+    - All files (${exclude_files[@]}) are removed on destination directory by this script
+    - Export type 'individual' only works from repository base or first level directory.
+
 EOF
+	exitScript 1
 }
 
 check_svn_connectivity(){
@@ -240,13 +235,13 @@ check_svn_connectivity(){
 }
 
 result_usage(){
-	echo $block_separator
-	echo "To use the result of this script,"
 	echo
-	echo "[user@host dir]# cp $svn_output.* <destination_directory>"
-	echo "[user@host dir]# cd <destination_directory>"
-	echo "[user@host dir]# ./$svn_outputscript"
-	echo "[user@host dir]# chown ${httpd_user}:${httpd_group} . -R"
+	echo "---------------------------------------------------------"
+	echo "To use the result of this script,"
+	echo "    cp $svn_output.* <destination_directory>"
+	echo "    cd <destination_directory>"
+	echo "    ./$svn_outputscript"
+	echo "---------------------------------------------------------"
 	echo
 }
 
@@ -256,6 +251,43 @@ print_license(){
 	echo "This is free software, and you are welcome to redistribute it"
 	echo "under certain conditions; read LICENSE file for details."
 	echo
+}
+
+read_params(){
+	while [[ $# -gt 0 ]]; do
+		key="$1"
+		case $key in
+			-U|--url)
+				svn_repo="$2"
+				shift
+				;;
+			-r|--revision)
+				svn_rev="$2"
+				shift
+				;;
+			-t|--type)
+				svn_type="$2"
+				shift
+				;;
+			-u|--username)
+				svn_user="$2"
+				shift
+				;;
+			-p|--password)
+				svn_pass="$2"
+				shift
+				;;
+			-d|--deploy-path)
+				deploy_path=$OPTARG
+				LEN=${#deploy_path}-1
+				if [ "${deploy_path:LEN}" != "/" ]; then deploy_path=$deploy_path"/"; fi
+				;;
+			*)
+				usage
+				;;
+		esac
+		shift
+	done
 }
 
 #######################################################################################
@@ -271,64 +303,36 @@ fi
 
 # Check prerrequisites
 if [ "$svn_binpath" == "" ]; then
-	echo -e "Warning: Subversion client not found\nSubversion package must be installed\nIf not installed, execute:\n\tyum install subversion"
+	echo -e "\033[33mWarning: Subversion client not found\nSubversion package must be installed\nIf not installed, execute:\n\tyum install subversion\033[0m"
 	exitScript 1
 fi
 
 # Read arguments
-svn_type="full"
-
-while getopts "h:r:t:u:p:d:" OPTION; do
-	case "$OPTION" in
-		h)
-			svn_repo=$OPTARG
-			;;
-		r)
-			svn_rev=$OPTARG
-			;;
-		t)
-			svn_type=$OPTARG
-			;;
-		u)
-			svn_user=$OPTARG
-			;;
-		p)
-			svn_pass=$OPTARG
-			;;
-		d)
-			deploy_path=$OPTARG
-			LEN=${#deploy_path}-1
-			if [ "${deploy_path:LEN}" != "/" ]; then deploy_path=$deploy_path"/"; fi
-			;;
-		?)
-			usage
-			exitScript 1
-			;;
-	esac
-done
+read_params "$@"
 
 # Check arguments
 if [[ -z $svn_repo ]] || [[ -z $svn_rev ]] || [[ -z $svn_type ]] || [[ -z $svn_user ]]; then
 	usage
-	exitScript 1
 fi
 
 # Check auto-deploy
 if [ ! -z "$deploy_path" ]; then
 	if [[ ! "$deploy_path" =~ ^/ ]]; then
-		echo "Warning: Auto-deploy dir must be absolute!"
+		echo -e "\033[33mWarning: Auto-deploy dir must be absolute!\033[0m"
 		usage
-		exitScript 1
 	fi
 	if [ ! -d "$deploy_path" ]; then
-		echo "Warning: Auto-deploy dir [$deploy_path] not found!"
+		echo -e "\033[33mWarning: Auto-deploy dir [$deploy_path] not found!\033[0m"
 		exitScript 1
 	fi
 fi
 
 # Read SVN Password
-echo -n Password:
-read -s svn_pass
+if [ -z $svn_pass ]; then
+	echo -n "Password: "
+	read -s svn_pass
+	echo
+fi
 
 check_parameters=0
 for i in ${export_types[@]}; do
@@ -340,15 +344,13 @@ done
 
 if [[ $check_parameters -eq 0 ]]; then
 	usage
-	exitScript 1
 fi
 
 # Print summary
 summary
-echo $block_separator
 
 # Remove old output files
-echo -n "[ INFO ] Removing old files ... "
+echo "Removing old files ... "
 rm $svn_outputtargz -Rf > /dev/null 2>&1
 checkError
 
@@ -358,20 +360,17 @@ checkError
 mkdir $svn_output > /dev/null 2>&1
 checkError
 
-checkSucess
-echo -n "[ INFO ] Checking SVN connectivity ... "
+echo "Checking SVN connectivity ... "
 check_svn_connectivity
 checkError
 
 # Creating SH file
-checkSucess
-echo -n "[ INFO ] Initializing SH file ... "
+echo "Initializing SH file ... "
 echo "#!/bin/bash" > $svn_outputscript
 checkError
 
 # Subversion Repository export
-checkSucess
-echo "[ INFO ] Executing EXPORT ... "
+echo "Executing EXPORT ... "
 case "$svn_type" in
 	"full")
 		getFull
@@ -386,30 +385,28 @@ case "$svn_type" in
 		;;
 	*)
 		usage
-		exitScript 1
 esac
 
 # Configure SH file
-checkSucess
-echo -n "[ INFO ] Configuring SH file ... "
+echo "Configuring SH file ... "
 
-echo "echo ""[ INFO ] Changing umask to 0027""" >> $svn_outputscript
+echo "echo ""Changing umask to 0027""" >> $svn_outputscript
 echo 'old_umask=$(umask)' >> $svn_outputscript
 echo "umask 0027" >> $svn_outputscript
 
-echo "echo ""[ INFO ] Extracting $svn_outputtargz""" >> $svn_outputscript
+echo "echo ""Extracting $svn_outputtargz""" >> $svn_outputscript
 echo "tar xvzf $svn_outputtargz --no-same-permissions --no-overwrite-dir" >> $svn_outputscript
 checkError
 
-echo "echo ""[ INFO ] Removing $svn_outputtargz""" >> $svn_outputscript
+echo "echo ""Removing $svn_outputtargz""" >> $svn_outputscript
 echo "rm $svn_outputtargz -f " >> $svn_outputscript
 checkError
 
-echo "echo ""[ INFO ] Removing $svn_outputscript""" >> $svn_outputscript
+echo "echo ""Removing $svn_outputscript""" >> $svn_outputscript
 echo "rm $svn_outputscript -f " >> $svn_outputscript
 checkError
 
-echo "echo ""[ INFO ] Updating .revision file""" >> $svn_outputscript
+echo "echo ""Updating .revision file""" >> $svn_outputscript
 echo "if [ ! -f .revision ]; then echo \"Datetime,Operation,Revision,Source,Username\" >> .revision; fi" >> $svn_outputscript
 checkError
 
@@ -417,25 +414,28 @@ echo "echo ""$(date +%Y/%m/%d),$(date +%H:%M),$svn_type,$svn_rev,$svn_repo,$svn_
 checkError
 
 for pattern in ${exclude_folders[@]}; do
-	echo "echo ""[ INFO ] Removing $pattern directories""" >> $svn_outputscript
+	echo "echo ""Removing $pattern directories""" >> $svn_outputscript
 	echo "find . -name \"$pattern\" -type d -exec rm -rf {} \;" >> $svn_outputscript
 	checkError
 done
 
 for pattern in ${exclude_files[@]}; do
-	echo "echo ""[ INFO ] Removing $pattern files""" >> $svn_outputscript
+	echo "echo ""Removing $pattern files""" >> $svn_outputscript
 	echo "find . -name \"$pattern\" -type f -exec rm -rf {} \;" >> $svn_outputscript
 	checkError
 done
 
-echo 'echo "[ INFO ] Restoring umask to $old_umask"' >> $svn_outputscript
+echo 'echo "Restoring umask to $old_umask"' >> $svn_outputscript
 echo 'umask $old_umask' >> $svn_outputscript
 
-#echo "echo ""[ INFO ] Changing permissions on all files to 640""" >> $svn_outputscript
+echo 'echo "Changing dir ownership"' >> $svn_outputscript
+echo 'chown ${httpd_user}:${httpd_group} . -R' >> $svn_outputscript
+
+#echo "echo ""Changing permissions on all files to 640""" >> $svn_outputscript
 #echo "find . -type f -exec chmod 640 {} \;" >> $svn_outputscript
 #checkError
 
-#echo "echo ""[ INFO ] Changing permissions on all directories to 750""" >> $svn_outputscript
+#echo "echo ""Changing permissions on all directories to 750""" >> $svn_outputscript
 #echo "find . -type d -exec chmod 750 {} \;" >> $svn_outputscript
 #checkError
 
@@ -443,42 +443,31 @@ chmod +x $svn_outputscript > /dev/null 2>&1
 checkError
 
 # Generate TAR.GZ file
-checkSucess
-echo -n "[ INFO ] Creating TAR.GZ file ... "
+echo "Creating TAR.GZ file ... "
 tar cvzf $svn_outputtargz -C $svn_output . > /dev/null 2>&1
 checkError
 
-checkSucess
-echo -n "[ INFO ] Removing temporal files ... "
+echo "Removing temporal files ... "
 rm $svn_output -Rf > /dev/null 2>&1
 checkError
 
 # Print end message
-checkSucess
 
-echo $block_separator
 # Auto-deploy
 if [ ! -z "$deploy_path" ]; then
 	if [ -d "$deploy_path" ]; then
 		read -r -p "¿Esta seguro que desea desplegar automaticamente en el directorio [$deploy_path]? [s/N] " response
 		case "$response" in
 			y|Y|s|S)
-				echo -n "[ INFO ] Copying files to auto-deploy dir ... "
+				echo -n "Copying files to auto-deploy dir ... "
 				mv -f $svn_output.* "$deploy_path"
 				checkError
-				checkSucess
-				echo -n "[ INFO ] Changing current directory ... "
+				echo -n "Changing current directory ... "
 				cd "$deploy_path"
 				checkError
-				checkSucess
-				echo "[ INFO ] Executing deployment script ... "
+				echo "Executing deployment script ... "
 				./$svn_outputscript
 				checkError
-				checkSucess
-				echo -n "[ INFO ] Changing auto-deploy dir ownership ... "
-				chown ${httpd_user}:${httpd_group} "$deploy_path" -R
-				checkError
-				checkSucess
 				;;
 			*)
 				result_usage
@@ -491,7 +480,6 @@ else
 	result_usage
 fi
 
-echo $block_separator
-echo -e "\033[33m[ ADVISE ]\033[0m This script set umask to 0027 on extracted files, so if website have special permissions, you have to set them."
+echo -e "\033[33mThis script set umask to 0027 on extracted files, so if website have special permissions, you have to set them.\033[0m"
 
 exitScript 0
