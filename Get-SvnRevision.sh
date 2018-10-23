@@ -1,0 +1,497 @@
+#!/bin/bash
+
+# Get-SvnRevision.sh - Retrieve files from Subversion Repository (full, individual or changes)
+# Copyright (C) 2013 Ramon Roman Castro <info@rrc2software.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+# Author: Ramon Roman Castro
+# Web   : http://www.rrc2software.com
+# Email : info@rrc2software.com
+
+# Change log:
+# 0.1	Initial realease
+# 0.2	New engine for export types
+# 0.3	Color messages in console
+# 0.4	Remove unnecessary files
+# 0.5	Add [_notes] to Remove unnecessary files. Add [rm . -rf] if [-t full]
+# 0.6	Minor changes
+# 0.7	Minor changes
+# 1.0	First FINAL version
+# 1.0.1	Minor changes
+# 1.0.2	Add [.settings] to Remove unnecessary files
+# 1.1.1	Fix: Remove files from destination if removed between revisions error fixed
+# 1.2.0	Add option check_version_online
+# 1.2.1	Add [build] to Remove unnecessary files
+# 1.2.2	Fix file names with blank spaces in [changes] and [individual] exports
+# 1.2.3 Remove check_version_url before script execution
+# 1.2.4 Add double-quote to remove file/folder
+# 1.2.5 Created exclude_files & exclude_folders variables
+# 1.2.6 Add username/password to changes/individual
+# 1.2.7 Remove SVN Password parameter
+# 1.2.8 Add GNU text
+# 1.2.9 Add double-quotes for password and username
+#		Show [full] results on screen
+# 1.3	Add escape character @ at individual/changes (http://svnbook.red-bean.com/en/1.5/svn.advanced.pegrevs.html)
+# 1.3.1	Capture httpd user and group from httpd config file.
+#		Remove full comments at the end of script
+# 1.3.2	Change default permissions: directories[755->750], files [644->640]
+# 		Disable individual export
+# 		Add comments to export bash file
+#		Add --no-same-permissions, --no-overwrite-dir to tar xvzf on export bash file
+#		Comment file and directories find & replace permissions on ALL files
+# 1.3.3 Change umask to 0027
+# 1.4	Modified .revision to output valid CSV format and include username
+# 1.5	Fix problem with download changes and deleted files between revisions (add @REV at the end of old files)
+# 1.51	Fix problem with download changes and deleted files between revisions (add @REV at the end of old files)
+# 1.52	Add -d (deploy) option to auto-deploy files
+#		Add -non-interactive parameter to svn queries
+# 1.53	Fix auto-deploy errors
+# 1.54	Add --trust-server-cert
+# 1.55	Add new license details.
+#		Change script name. 
+#		Change default httpd's user and group.
+#		Add config file feature.
+
+#--------------------------------------------------------------------------------------
+# VARIABLES
+#--------------------------------------------------------------------------------------
+
+script_name=Get-SvnRevision
+script_version=1.55
+svn_error=0
+svn_binpath=$(which svn 2>/dev/null)
+svn_scriptname=$(basename $(readlink --canonicalize --no-newline $0))
+svn_scriptname=${svn_scriptname%.*}
+export_types=(full changes individual)
+check_parameters=0
+line_separator="--------------------------------------------------------------------"
+block_separator="===================================================================="
+
+httpd_root=$(httpd -V | grep "HTTPD_ROOT="".*""" | awk -F "=" '{ print $2 }' | tr -d '"')
+httpd_config=$(httpd -V | grep "SERVER_CONFIG_FILE="".*""" | awk -F "=" '{ print $2 }' | tr -d '"')
+httpd_config=${httpd_root}/${httpd_config}
+
+if [ -f $httpd_config ]; then
+	httpd_user=$(grep -oi "^[[:space:]]*User[[:space:]]\+\(.\+\)$" /etc/httpd/conf/httpd.conf | awk '{ print $2 }')
+	httpd_group=$(grep -oi "^[[:space:]]*Group[[:space:]]\+\(.\+\)$" /etc/httpd/conf/httpd.conf | awk '{ print $2 }')
+fi
+
+httpd_user=${httpd_user:-apache}
+httpd_group=${httpd_user:-apache}
+
+#--------------------------------------------------------------------------------------
+# CONFIGURATION
+#--------------------------------------------------------------------------------------
+
+exclude_files=(Thumbs.db .project .settings .buildpath)
+exclude_folders=(sql _notes)
+svn_output=$svn_scriptname.export
+svn_outputscript=$svn_scriptname.export.sh
+svn_outputtargz=$svn_scriptname.export.tar.gz
+
+#--------------------------------------------------------------------------------------
+# FUNTIONS
+#--------------------------------------------------------------------------------------
+
+# checkError()
+# Print error, remove output files and exit
+exitScript()
+{
+	rm $svn_output -Rf > /dev/null 2>&1
+	echo
+	exit $1
+}
+
+checkError()
+{
+	if [ $? -ne 0 ]; then
+		echo -e "[\033[0;31m ERROR \033[0m]"
+		exitScript 1
+	fi
+}
+
+checkSucess()
+{
+	echo -e "[\033[0;32m OK \033[0m]"
+}
+
+# getFull()
+# Retrieve a copy of subversion repository up to revision number
+getFull()
+{
+	echo $svn_repo
+	svn export --non-interactive --trust-server-cert --username="$svn_user" --password="$svn_pass" --force -r $svn_rev $svn_repo $svn_output
+	checkError
+}
+
+# getIndividual()
+# Retrieve a copy of subversion repository of changes maded in revision number
+getIndividual()
+{
+	#for i in $(svn log -qv -r $svn_rev $svn_repo | awk '/[DMA][ ]+\//{ print $1$2 }'); do
+	OLD_IFS=$IFS
+	IFS=$'\n'
+	for i in $(svn log --non-interactive --trust-server-cert --username="$svn_user" --password="$svn_pass" -qv -r $svn_rev $svn_repo | awk '/^[ ]+[DMA][ ]+\//{ print gensub(/[ ]+([DMA])[ ]+/,"\\1","g",$0)}'); do
+		o=${i:0:1}
+		p=${i:1}
+		l=$(basename $svn_repo)
+		p=${p#/$l/}
+		pescape=$(echo ${p} | sed 's/\(.*@.*\)/\1@/')
+		echo [$o] - $p
+		if [ "$o" != "D" ]; then
+			mkdir -p $svn_output/$(dirname $p) > /dev/null 2>&1
+			svn export --non-interactive --trust-server-cert --username=$svn_user --password=$svn_pass --force -r $svn_rev $svn_repo/$pescape $svn_output/$p > /dev/null 2>&1
+			checkError
+		else
+			echo "rm \".$p\" -Rf" >> $svn_outputscript
+		fi
+	done
+	IFS=$OLD_IFS
+}
+
+# getChanges()
+# Retrieve a copy of subversion repository of changes maded between to revision numbers
+getChanges()
+{
+	svn_rev_last=$(echo $svn_rev | awk 'BEGIN{FS=":"}{ print $2 }')
+	svn_repo_l=${#svn_repo}
+	let svn_repo_l++
+	#for i in $(svn diff -r $svn_rev --summarize $svn_repo | awk '/[DMA][ ]+/{ print $1$2 }'); do
+	OLD_IFS=$IFS
+	IFS=$'\n'
+	for i in $(svn diff --non-interactive --trust-server-cert --username="$svn_user" --password="$svn_pass" -r $svn_rev --summarize $svn_repo | awk '/^[DMA][ ]+/{ print gensub(/([DMA])[ ]+/,"\\1","g",$0)}'); do
+		o=${i:0:1}
+		p=${i:$svn_repo_l}
+		pescape=$(echo ${p} | sed 's/\(.*@.*\)/\1@/')
+		echo [$o] - $p
+		if [ "$o" != "D" ]; then
+			if [ "$p" != "" ]; then
+				#<r1.51>
+				look=$(svn log --non-interactive --trust-server-cert --username="$svn_user" --password="$svn_pass" -q ${svn_repo}/${pescape}@${svn_rev_last} | awk '{ if (NR==2) print $1 }' | tr -d 'r')
+				#</r1.51>
+				mkdir -p $svn_output/$(dirname $p) > /dev/null 2>&1
+				svn export --non-interactive --trust-server-cert --username="$svn_user" --password="$svn_pass" --force -r $svn_rev_last $svn_repo/${pescape}@${look} $svn_output/$p > /dev/null 2>&1
+				checkError
+			fi
+		else
+			echo "rm \".$p\" -Rf" >> $svn_outputscript
+		fi
+	done
+	IFS=$OLD_IFS
+}
+
+# summary()
+# Print script summary
+summary()
+{
+cat << EOF
+
+$line_separator
+Script : `basename $0`
+Version: $script_version
+$line_separator
+Repository URL  : $svn_repo
+Export type     : $svn_type
+Revision number : $svn_rev
+Auto-deploy dir : $deploy_path
+EOF
+}
+
+# usage()
+# Print script usage
+usage()
+{
+cat << EOF
+
+Script : ${script_name}.sh
+Version: $script_version
+
+usage: $0 options
+
+OPTIONS:
+   -h      Repository URL
+   -t      Export type, can be 'full', 'individual' or 'changes' (Default: full)
+   -r      Revision number, can be N or N:M
+   -u      Username
+   -d      Absolute deploy path
+   
+NOTES:
+   - All directories (${exclude_folders[@]}) are removed on destination directory by this script
+   - All files (${exclude_files[@]}) are removed on destination directory by this script
+   - Export type 'individual' only works from repository base or first level directory.
+EOF
+}
+
+check_svn_connectivity(){
+	svn info --non-interactive --trust-server-cert --username="$svn_user" --password="$svn_pass" "$svn_repo" > /dev/null 2>&1
+	return $?
+}
+
+result_usage(){
+	echo $block_separator
+	echo "To use the result of this script,"
+	echo
+	echo "[user@host dir]# cp $svn_output.* <destination_directory>"
+	echo "[user@host dir]# cd <destination_directory>"
+	echo "[user@host dir]# ./$svn_outputscript"
+	echo "[user@host dir]# chown ${httpd_user}:${httpd_group} . -R"
+	echo
+}
+
+print_license(){
+	echo "${script_name}.sh version ${script_version}, Copyright (C) 2018  Ramón Román Castro <ramonromancastro@gmail.com>"
+	echo "This program comes with ABSOLUTELY NO WARRANTY; for details read LICENSE file."
+	echo "This is free software, and you are welcome to redistribute it"
+	echo "under certain conditions; read LICENSE file for details."
+	echo
+}
+
+#######################################################################################
+# MAIN CODE
+#######################################################################################
+
+print_license
+
+# Load default config
+if [ -f ${script_name}.conf ]; then
+	. ${script_name}.conf
+fi
+
+# Check prerrequisites
+if [ "$svn_binpath" == "" ]; then
+	echo -e "Warning: Subversion client not found\nSubversion package must be installed\nIf not installed, execute:\n\tyum install subversion"
+	exitScript 1
+fi
+
+# Read arguments
+svn_type="full"
+
+while getopts "h:r:t:u:p:d:" OPTION; do
+	case "$OPTION" in
+		h)
+			svn_repo=$OPTARG
+			;;
+		r)
+			svn_rev=$OPTARG
+			;;
+		t)
+			svn_type=$OPTARG
+			;;
+		u)
+			svn_user=$OPTARG
+			;;
+		p)
+			svn_pass=$OPTARG
+			;;
+		d)
+			deploy_path=$OPTARG
+			LEN=${#deploy_path}-1
+			if [ "${deploy_path:LEN}" != "/" ]; then deploy_path=$deploy_path"/"; fi
+			;;
+		?)
+			usage
+			exitScript 1
+			;;
+	esac
+done
+
+# Check arguments
+if [[ -z $svn_repo ]] || [[ -z $svn_rev ]] || [[ -z $svn_type ]] || [[ -z $svn_user ]]; then
+	usage
+	exitScript 1
+fi
+
+# Check auto-deploy
+if [ ! -z "$deploy_path" ]; then
+	if [[ ! "$deploy_path" =~ ^/ ]]; then
+		echo "Warning: Auto-deploy dir must be absolute!"
+		usage
+		exitScript 1
+	fi
+	if [ ! -d "$deploy_path" ]; then
+		echo "Warning: Auto-deploy dir [$deploy_path] not found!"
+		exitScript 1
+	fi
+fi
+
+# Read SVN Password
+echo -n Password:
+read -s svn_pass
+
+check_parameters=0
+for i in ${export_types[@]}; do
+	if [[ "$i" == "$svn_type" ]] ; then
+		check_parameters=1
+		break
+	fi;
+done
+
+if [[ $check_parameters -eq 0 ]]; then
+	usage
+	exitScript 1
+fi
+
+# Print summary
+summary
+echo $block_separator
+
+# Remove old output files
+echo -n "[ INFO ] Removing old files ... "
+rm $svn_outputtargz -Rf > /dev/null 2>&1
+checkError
+
+rm $svn_output -Rf > /dev/null 2>&1
+checkError
+
+mkdir $svn_output > /dev/null 2>&1
+checkError
+
+checkSucess
+echo -n "[ INFO ] Checking SVN connectivity ... "
+check_svn_connectivity
+checkError
+
+# Creating SH file
+checkSucess
+echo -n "[ INFO ] Initializing SH file ... "
+echo "#!/bin/bash" > $svn_outputscript
+checkError
+
+# Subversion Repository export
+checkSucess
+echo "[ INFO ] Executing EXPORT ... "
+case "$svn_type" in
+	"full")
+		getFull
+		;;
+	"individual")
+		echo -e "\033[33m[ ADVISE ]\033[0m individual export is DISABLED."
+		exitScript 1
+		#getIndividual
+		;;
+	"changes")
+		getChanges
+		;;
+	*)
+		usage
+		exitScript 1
+esac
+
+# Configure SH file
+checkSucess
+echo -n "[ INFO ] Configuring SH file ... "
+
+echo "echo ""[ INFO ] Changing umask to 0027""" >> $svn_outputscript
+echo 'old_umask=$(umask)' >> $svn_outputscript
+echo "umask 0027" >> $svn_outputscript
+
+echo "echo ""[ INFO ] Extracting $svn_outputtargz""" >> $svn_outputscript
+echo "tar xvzf $svn_outputtargz --no-same-permissions --no-overwrite-dir" >> $svn_outputscript
+checkError
+
+echo "echo ""[ INFO ] Removing $svn_outputtargz""" >> $svn_outputscript
+echo "rm $svn_outputtargz -f " >> $svn_outputscript
+checkError
+
+echo "echo ""[ INFO ] Removing $svn_outputscript""" >> $svn_outputscript
+echo "rm $svn_outputscript -f " >> $svn_outputscript
+checkError
+
+echo "echo ""[ INFO ] Updating .revision file""" >> $svn_outputscript
+echo "if [ ! -f .revision ]; then echo \"Datetime,Operation,Revision,Source,Username\" >> .revision; fi" >> $svn_outputscript
+checkError
+
+echo "echo ""$(date +%Y/%m/%d),$(date +%H:%M),$svn_type,$svn_rev,$svn_repo,$svn_user"" >> .revision" >> $svn_outputscript
+checkError
+
+for pattern in ${exclude_folders[@]}; do
+	echo "echo ""[ INFO ] Removing $pattern directories""" >> $svn_outputscript
+	echo "find . -name \"$pattern\" -type d -exec rm -rf {} \;" >> $svn_outputscript
+	checkError
+done
+
+for pattern in ${exclude_files[@]}; do
+	echo "echo ""[ INFO ] Removing $pattern files""" >> $svn_outputscript
+	echo "find . -name \"$pattern\" -type f -exec rm -rf {} \;" >> $svn_outputscript
+	checkError
+done
+
+echo 'echo "[ INFO ] Restoring umask to $old_umask"' >> $svn_outputscript
+echo 'umask $old_umask' >> $svn_outputscript
+
+#echo "echo ""[ INFO ] Changing permissions on all files to 640""" >> $svn_outputscript
+#echo "find . -type f -exec chmod 640 {} \;" >> $svn_outputscript
+#checkError
+
+#echo "echo ""[ INFO ] Changing permissions on all directories to 750""" >> $svn_outputscript
+#echo "find . -type d -exec chmod 750 {} \;" >> $svn_outputscript
+#checkError
+
+chmod +x $svn_outputscript > /dev/null 2>&1
+checkError
+
+# Generate TAR.GZ file
+checkSucess
+echo -n "[ INFO ] Creating TAR.GZ file ... "
+tar cvzf $svn_outputtargz -C $svn_output . > /dev/null 2>&1
+checkError
+
+checkSucess
+echo -n "[ INFO ] Removing temporal files ... "
+rm $svn_output -Rf > /dev/null 2>&1
+checkError
+
+# Print end message
+checkSucess
+
+echo $block_separator
+# Auto-deploy
+if [ ! -z "$deploy_path" ]; then
+	if [ -d "$deploy_path" ]; then
+		read -r -p "¿Esta seguro que desea desplegar automaticamente en el directorio [$deploy_path]? [s/N] " response
+		case "$response" in
+			y|Y|s|S)
+				echo -n "[ INFO ] Copying files to auto-deploy dir ... "
+				mv -f $svn_output.* "$deploy_path"
+				checkError
+				checkSucess
+				echo -n "[ INFO ] Changing current directory ... "
+				cd "$deploy_path"
+				checkError
+				checkSucess
+				echo "[ INFO ] Executing deployment script ... "
+				./$svn_outputscript
+				checkError
+				checkSucess
+				echo -n "[ INFO ] Changing auto-deploy dir ownership ... "
+				chown ${httpd_user}:${httpd_group} "$deploy_path" -R
+				checkError
+				checkSucess
+				;;
+			*)
+				result_usage
+				;;
+		esac
+	else
+		result_usage
+	fi
+else
+	result_usage
+fi
+
+echo $block_separator
+echo -e "\033[33m[ ADVISE ]\033[0m This script set umask to 0027 on extracted files, so if website have special permissions, you have to set them."
+
+exitScript 0
