@@ -67,13 +67,14 @@
 # 1.56	Add new read parameters function.
 #		Add coloured output.
 # 1.57	Fix -d|--deploy-path parameter error.
+# 1.58	Fix http_user and http_group when deploy.
 
 #--------------------------------------------------------------------------------------
 # VARIABLES
 #--------------------------------------------------------------------------------------
 
 script_name=Get-SvnRevision
-script_version=1.57
+script_version=1.58
 svn_error=0
 svn_binpath=$(which svn 2>/dev/null)
 svn_scriptname=$(basename $(readlink --canonicalize --no-newline $0))
@@ -450,7 +451,7 @@ echo 'echo "Restoring umask to $old_umask"' >> $svn_outputscript
 echo 'umask $old_umask' >> $svn_outputscript
 
 echo 'echo "Changing dir ownership"' >> $svn_outputscript
-echo 'chown ${httpd_user}:${httpd_group} . -R' >> $svn_outputscript
+echo "chown ${httpd_user}:${httpd_group} . -R" >> $svn_outputscript
 
 #echo "echo ""Changing permissions on all files to 640""" >> $svn_outputscript
 #echo "find . -type f -exec chmod 640 {} \;" >> $svn_outputscript
