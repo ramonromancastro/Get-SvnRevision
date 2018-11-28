@@ -66,13 +66,14 @@
 #		Minor visual changes.
 # 1.56	Add new read parameters function.
 #		Add coloured output.
+# 1.57	Fix -d|--deploy-path parameter error.
 
 #--------------------------------------------------------------------------------------
 # VARIABLES
 #--------------------------------------------------------------------------------------
 
 script_name=Get-SvnRevision
-script_version=1.56
+script_version=1.57
 svn_error=0
 svn_binpath=$(which svn 2>/dev/null)
 svn_scriptname=$(basename $(readlink --canonicalize --no-newline $0))
@@ -297,7 +298,8 @@ read_params(){
 				shift
 				;;
 			-d|--deploy-path)
-				deploy_path=$OPTARG
+				deploy_path="$2"
+				shift
 				LEN=${#deploy_path}-1
 				if [ "${deploy_path:LEN}" != "/" ]; then deploy_path=$deploy_path"/"; fi
 				;;
