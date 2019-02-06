@@ -21,60 +21,61 @@
 # Email : info@rrc2software.com
 
 # Change log:
-# 0.1	Initial realease
-# 0.2	New engine for export types
-# 0.3	Color messages in console
-# 0.4	Remove unnecessary files
-# 0.5	Add [_notes] to Remove unnecessary files. Add [rm . -rf] if [-t full]
-# 0.6	Minor changes
-# 0.7	Minor changes
-# 1.0	First FINAL version
-# 1.0.1	Minor changes
-# 1.0.2	Add [.settings] to Remove unnecessary files
-# 1.1.1	Fix: Remove files from destination if removed between revisions error fixed
-# 1.2.0	Add option check_version_online
-# 1.2.1	Add [build] to Remove unnecessary files
-# 1.2.2	Fix file names with blank spaces in [changes] and [individual] exports
-# 1.2.3 Remove check_version_url before script execution
-# 1.2.4 Add double-quote to remove file/folder
-# 1.2.5 Created exclude_files & exclude_folders variables
-# 1.2.6 Add username/password to changes/individual
-# 1.2.7 Remove SVN Password parameter
-# 1.2.8 Add GNU text
-# 1.2.9 Add double-quotes for password and username
-#		Show [full] results on screen
-# 1.3	Add escape character @ at individual/changes (http://svnbook.red-bean.com/en/1.5/svn.advanced.pegrevs.html)
-# 1.3.1	Capture httpd user and group from httpd config file.
-#		Remove full comments at the end of script
-# 1.3.2	Change default permissions: directories[755->750], files [644->640]
-# 		Disable individual export
-# 		Add comments to export bash file
-#		Add --no-same-permissions, --no-overwrite-dir to tar xvzf on export bash file
-#		Comment file and directories find & replace permissions on ALL files
-# 1.3.3 Change umask to 0027
-# 1.4	Modified .revision to output valid CSV format and include username
-# 1.5	Fix problem with download changes and deleted files between revisions (add @REV at the end of old files)
-# 1.51	Fix problem with download changes and deleted files between revisions (add @REV at the end of old files)
-# 1.52	Add -d (deploy) option to auto-deploy files
-#		Add -non-interactive parameter to svn queries
-# 1.53	Fix auto-deploy errors
-# 1.54	Add --trust-server-cert
-# 1.55	Add new license details.
-#		Change script name. 
-#		Change default httpd's user and group.
-#		Add config file feature.
-#		Minor visual changes.
-# 1.56	Add new read parameters function.
-#		Add coloured output.
-# 1.57	Fix -d|--deploy-path parameter error.
-# 1.58	Fix http_user and http_group when deploy.
+# 0.1    Initial realease
+# 0.2    New engine for export types
+# 0.3    Color messages in console
+# 0.4    Remove unnecessary files
+# 0.5    Add [_notes] to Remove unnecessary files. Add [rm . -rf] if [-t full]
+# 0.6    Minor changes
+# 0.7    Minor changes
+# 1.0    First FINAL version
+# 1.0.1  Minor changes
+# 1.0.2  Add [.settings] to Remove unnecessary files
+# 1.1.1  Fix: Remove files from destination if removed between revisions error fixed
+# 1.2.0  Add option check_version_online
+# 1.2.1  Add [build] to Remove unnecessary files
+# 1.2.2  Fix file names with blank spaces in [changes] and [individual] exports
+# 1.2.3  Remove check_version_url before script execution
+# 1.2.4  Add double-quote to remove file/folder
+# 1.2.5  Created exclude_files & exclude_folders variables
+# 1.2.6  Add username/password to changes/individual
+# 1.2.7  Remove SVN Password parameter
+# 1.2.8  Add GNU text
+# 1.2.9  Add double-quotes for password and username
+#        Show [full] results on screen
+# 1.3    Add escape character @ at individual/changes (http://svnbook.red-bean.com/en/1.5/svn.advanced.pegrevs.html)
+# 1.3.1  Capture httpd user and group from httpd config file.
+#        Remove full comments at the end of script
+# 1.3.2  Change default permissions: directories[755->750], files [644->640]
+#        Disable individual export
+#        Add comments to export bash file
+#        Add --no-same-permissions, --no-overwrite-dir to tar xvzf on export bash file
+#        Comment file and directories find & replace permissions on ALL files
+# 1.3.3  Change umask to 0027
+# 1.4    Modified .revision to output valid CSV format and include username
+# 1.5    Fix problem with download changes and deleted files between revisions (add @REV at the end of old files)
+# 1.51   Fix problem with download changes and deleted files between revisions (add @REV at the end of old files)
+# 1.52   Add -d (deploy) option to auto-deploy files
+#        Add -non-interactive parameter to svn queries
+# 1.53   Fix auto-deploy errors
+# 1.54   Add --trust-server-cert
+# 1.55   Add new license details.
+#        Change script name. 
+#        Change default httpd's user and group.
+#        Add config file feature.
+#        Minor visual changes.
+# 1.56   Add new read parameters function.
+#        Add coloured output.
+# 1.57   Fix -d|--deploy-path parameter error.
+# 1.58   Fix http_user and http_group when deploy.
+# 1.58.1 Change comments.
 
 #--------------------------------------------------------------------------------------
 # VARIABLES
 #--------------------------------------------------------------------------------------
 
 script_name=Get-SvnRevision
-script_version=1.58
+script_version=1.58.1
 svn_error=0
 svn_binpath=$(which svn 2>/dev/null)
 svn_scriptname=$(basename $(readlink --canonicalize --no-newline $0))
