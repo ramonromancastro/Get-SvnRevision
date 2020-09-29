@@ -25,7 +25,7 @@
 #--------------------------------------------------------------------------------------
 
 script_name=Get-SvnRevision
-script_version=1.58.1
+script_version=1.59
 svn_error=0
 svn_binpath=$(which svn 2>/dev/null)
 svn_scriptname=$(basename $(readlink --canonicalize --no-newline $0))
@@ -39,6 +39,7 @@ svn_type="full"
 svn_user=
 svn_pass=
 deploy_path=
+batch_execution=
 
 httpd_root=$(httpd -V | grep "HTTPD_ROOT="".*""" | awk -F "=" '{ print $2 }' | tr -d '"')
 httpd_config=$(httpd -V | grep "SERVER_CONFIG_FILE="".*""" | awk -F "=" '{ print $2 }' | tr -d '"')
@@ -191,6 +192,7 @@ OPTIONS:
     -u|--username     Repository username
     -p|--password     Repository password [optional]
     -d|--deploy-path  Absolute deploy path [optional]
+    -b|--batch        Non interactive execution [optional]
    
 NOTES:
     - All directories (${exclude_folders[@]}) are removed on destination directory by this script
@@ -248,6 +250,9 @@ read_params(){
 			-p|--password)
 				svn_pass="$2"
 				shift
+				;;
+			-b|--batch)
+				batch_execution=1
 				;;
 			-d|--deploy-path)
 				deploy_path="$2"
@@ -429,7 +434,11 @@ checkError
 # Auto-deploy
 if [ ! -z "$deploy_path" ]; then
 	if [ -d "$deploy_path" ]; then
-		read -r -p "¿Esta seguro que desea desplegar automaticamente en el directorio [$deploy_path]? [s/N] " response
+		if [ ! -s "$batch_execution" ]; then
+			response='s'
+		else
+			read -r -p "¿Esta seguro que desea desplegar automaticamente en el directorio [$deploy_path]? [s/N] " response
+		fi
 		case "$response" in
 			y|Y|s|S)
 				echo -n "Copying files to auto-deploy dir ... "
