@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.60] - 2021-02-01
+### Changed
+- Comment changes made in 1.5 and 1.51
+
 ## [1.59] - 2020-09-29
 ### Add
 - Add -b|--batch parameter.
