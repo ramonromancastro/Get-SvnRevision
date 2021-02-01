@@ -25,7 +25,7 @@
 #--------------------------------------------------------------------------------------
 
 script_name=Get-SvnRevision
-script_version=1.59
+script_version=1.60
 svn_error=0
 svn_binpath=$(which svn 2>/dev/null)
 svn_scriptname=$(basename $(readlink --canonicalize --no-newline $0))
@@ -153,10 +153,10 @@ getChanges()
 		if [ "$o" != "D" ]; then
 			if [ "$p" != "" ]; then
 				#<r1.51>
-				look=$(svn log --non-interactive --trust-server-cert --username="$svn_user" --password="$svn_pass" -q ${svn_repo}/${pescape}@${svn_rev_last} | awk '{ if (NR==2) print $1 }' | tr -d 'r')
+				#look=$(svn log --non-interactive --trust-server-cert --username="$svn_user" --password="$svn_pass" -q ${svn_repo}/${pescape}@${svn_rev_last} | awk '{ if (NR==2) print $1 }' | tr -d 'r')
 				#</r1.51>
 				mkdir -p $svn_output/$(dirname $p) > /dev/null 2>&1
-				svn export --non-interactive --trust-server-cert --username="$svn_user" --password="$svn_pass" --force -r $svn_rev_last $svn_repo/${pescape}@${look} $svn_output/$p > /dev/null 2>&1
+				svn export --non-interactive --trust-server-cert --username="$svn_user" --password="$svn_pass" --force -r $svn_rev_last $svn_repo/${pescape} $svn_output/$p > /dev/null 2>&1
 				checkError
 			fi
 		else
